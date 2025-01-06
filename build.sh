@@ -1,2 +1,4 @@
-nim c -r src/main.nim
-#nim e test.nim
+set -e
+
+nimble build
+./desktop/game
