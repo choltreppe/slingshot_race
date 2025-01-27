@@ -1,21 +1,22 @@
-import std/[options, random, sequtils, math, macros]
+import std/[options, random, math]
 import fusion/matching
 import ./prelude, ./queue
+import ./shader
 
 
 const
-  shipRadius = 0.016
-  shipAccel = 0.2
+  shipRadius = 0.04
+  shipAccel = 0.28
   shipFuelUse = 0.14
   
-  planetRadiusRange = 0.04 .. 0.12
-  planetsMinMargin = 0.1
-  planetMaxDistance = 0.6
+  planetRadiusRange = 0.06 .. 0.14
+  planetsMinMargin = 0.16
+  planetMaxDistance = 0.5
   planetDistanceRange = planetRadiusRange.a+planetsMinMargin*1.1 .. planetMaxDistance+planetsMinMargin
 
   refuelOrbRadius = 0.02f32
 
-  gravityStrength = 5
+  gravityStrength = 4
 
   cameraShakeDistance = 0.1
   cameraShakeStrength = 0.01
@@ -32,23 +33,20 @@ type
     case kind: SpaceObjectKind
     of planet:
       radius: float32
+      texture: Texture2D
     of refuel:
       discard
 
 randomize()
 
 var
-  camera: Camera2D
+  worldScale: float32
   viewHeight: float32
   shipMinY: float32
 
-  spaceRender: tuple[
-    shader: Shader,
-    locs: tuple[
-      planetCount, planetPositions, planetRadii,
-      refuelCount, refuelPositions: ShaderLocation
-    ],
-  ]
+  shipTexture: Texture2D
+  planetShader: Shader
+  planetNoiseOffsetLoc: ShaderLocation
 
   ship: Ship
   spaceObjects = newQueue[SpaceObject](12)
@@ -56,6 +54,7 @@ var
   score: uint64
   scoreStep: float32
   cameraShake: tuple[
+    offset: Vec2,
     radius: float32,
     direction: Vec2
   ]
@@ -63,19 +62,32 @@ var
 proc restartGame
 proc initGame* =
   let screenSize = vec2(float32 getScreenWidth(), float32 getScreenHeight())
-  camera = Camera2D(zoom: screenSize.x)
+  worldScale = screenSize.x
   viewHeight = screenSize.y / screenSize.x
   shipMinY = viewHeight * 0.66
 
-  spaceRender.shader = loadShader("resources/shader/vert.glsl", "resources/shader/frag_space.glsl")
-  for name, field in spaceRender.locs.fieldPairs:
-    field = spaceRender.shader.getShaderLocation(name)
-  spaceRender.shader.setShaderValue(spaceRender.shader.getShaderLocation("refuelRadius"), refuelOrbRadius)
+  shipTexture = loadTextureSvg("resources/ufo.svg", int32(shipRadius*2*worldScale), 0)
+  planetShader = loadShaderFromMemory(vertShader, planetFragShader)
+  planetNoiseOffsetLoc = planetShader.getShaderLocation("noiseOffset")
 
   restartGame()
 
-func newPlanet*(position: Vec2, radius: float32): SpaceObject =
-  SpaceObject(kind: planet, position: position, radius: radius)
+proc newPlanet*(position: Vec2, radius: float32): SpaceObject =
+  result = SpaceObject(kind: planet, position: position, radius: radius)
+  let size = int32(radius*2*worldScale)
+  debugEcho size
+  let camera = Camera2D(zoom: float32(size))
+  var renderTexture = loadRenderTexture(size, size)
+  planetShader.setShaderValue(
+    planetNoiseOffsetLoc,
+    vec3(rand(-420f32 .. 420f32), rand(-420f32 .. 420f32), rand(-420f32 .. 420f32))
+  )
+  textureMode(renderTexture):
+    clearBackground(Color())
+    mode2D(camera):
+      shaderMode(planetShader):
+        drawRectangle(0, 0, 1, 1, White)
+  result.texture = renderTexture.texture
 
 func boundingRadius*(obj: SpaceObject): float32 =
   case obj.kind
@@ -94,26 +106,38 @@ proc restartGame =
   scoreStep = 0
   cameraShake.direction = vec2(1, 0)
 
+proc screenSpace(pos: Vec2): Vec2 =
+  (pos + cameraShake.offset) * worldScale
+
+proc screenSpace(rect: Rect): Rect =
+  Rect(
+    position: screenSpace(rect.position),
+    size: rect.size * worldScale,
+  )
+
 proc drawGame* =
   drawing:
     clearBackground(Black)
-    drawText($score, 340, 10, 30, White)
-    mode2D(camera):
-      shaderMode(spaceRender.shader):
-        drawRectangle(Rectangle(width: 1, height: viewHeight), White)
-      drawCircleLines(ship.position, shipRadius, White)
+    for obj in spaceObjects:
+      drawCircleLines(screenSpace(obj.position), obj.boundingRadius*worldScale):
+        case obj.kind
+        of refuel: Blue
+        of planet: White
+    drawTexture(shipTexture, screenSpace(ship.position-vec2(shipRadius)), White)
 
-      block drawFuelBar:
-        var rect = Rectangle(
-          x: 0.02, y: 0.02,
-          width: 0.4,
-          height: 0.05
-        )
-        drawRectangleLines(rect, 0.005, White)
-        rect.width *= ship.fuel
-        drawRectangle(rect, White)
+    block drawFuelBar:
+      var rect = screenSpace(newRect(
+        x = 0.03, y = 0.03,
+        w = 0.4, h = 0.05
+      ))
+      drawRectangleLines(rect, 2, White)
+      rect.size.x *= ship.fuel
+      drawRectangle(rect, White)
+    block:
+      let p = ivec2(screenSpace(vec2(0.8, 0.02)))
+      drawText($score, p.x, p.y, int32(0.08*worldScale), White)
 
-iterator planets: SpaceObject =
+iterator planets: lent SpaceObject =
   for obj in spaceObjects:
     if obj.kind == planet:
       yield obj
@@ -148,8 +172,8 @@ proc updateShip(dt: float32) =
         ship.fuel = max(0, ship.fuel - shipFuelUse*dt)
 
 proc addPlanet =
-  let prevObj = spaceObjects.last
-  let distance = prevObj.boundingRadius + rand(planetDistanceRange)
+  let prevObj = addr spaceObjects.last
+  let distance = prevObj[].boundingRadius + rand(planetDistanceRange)
 
   proc getMaxAngle(borderX: float32): float32 =
     let margin = abs(borderX - prevObj.position.x)
@@ -164,10 +188,6 @@ proc addPlanet =
       -getMaxAngle(1) .. 0f32
     else:
       0f32 .. getMaxAngle(0)
-
-  let newObjectKind =
-    if rand(1f32) < 0.2: refuel
-    else: planet
 
   while true:
     let position = prevObj.position + rotate(rand(angleRange)) * vec2(0, -distance)
@@ -184,33 +204,6 @@ proc addPlanet =
             rand(planetRadiusRange.a .. min(planetRadiusRange.b, maxRadius))
           )
       break
-
-proc updateSpaceShader =
-  var vals: tuple[
-    planetCount: int32,
-    planetPositions: array[12, Vector2],
-    planetRadii: array[12, float32],
-    refuelCount: int32,
-    refuelPositions: array[12, Vector2],
-  ]
-  for obj in spaceObjects:
-    case obj.kind
-    of planet:
-      vals.planetPositions[vals.planetCount] = obj.position
-      vals.planetRadii[vals.planetCount] = obj.radius
-      inc vals.planetCount
-    of refuel:
-      vals.refuelPositions[vals.refuelCount] = obj.position
-      inc vals.refuelCount
-
-  macro shaderLoc(name: static string): untyped =
-    let field = ident(name)
-    quote do: spaceRender.locs.`field`
-  for name, field in vals.fieldPairs:
-    when field is array:
-      spaceRender.shader.setShaderValueV(shaderLoc(name), field)
-    else:
-      spaceRender.shader.setShaderValue(shaderLoc(name), field)
 
 proc updateGame*(dt: float32) =
   updateShip(dt)
@@ -231,22 +224,19 @@ proc updateGame*(dt: float32) =
   
   if spaceObjects.last.position.y > -planetRadiusRange.a:
     addPlanet()
-  if (
-    (Some(@first) ?= spaceObjects.first) and
-    first.position.y > viewHeight + first.boundingRadius
-  ):
-    spaceObjects.deleteHead()
-
-  updateSpaceShader()
+  block:
+    let first = addr spaceObjects.first
+    if first.position.y > viewHeight + first[].boundingRadius:
+      spaceObjects.deleteHead()
 
   block:
     let distance = ship.position.distanceToPlanets
-    if distance < 0 or ship.position.x notin -0.1..1.1 or ship.position.y > viewHeight:
+    if distance < shipRadius or ship.position.x notin -0.1..1.1 or ship.position.y > viewHeight:
       restartGame()
     elif distance < cameraShakeDistance:
       cameraShake.radius = ((cameraShakeDistance - distance) / cameraShakeDistance)^2 * cameraShakeStrength
-      if length(camera.target) > cameraShake.radius:
-        cameraShake.direction = normalize(rotate(rand(2*Pi).float32) * vec2(cameraShake.radius, 0) - camera.target)
-      camera.target += cameraShake.direction * dt * (cameraShake.radius / cameraShakeStrength)
+      if length(cameraShake.offset) > cameraShake.radius:
+        cameraShake.direction = normalize(rotate(rand(2*Pi).float32) * vec2(cameraShake.radius, 0) - cameraShake.offset)
+      cameraShake.offset += cameraShake.direction * dt * (cameraShake.radius / cameraShakeStrength)
     else:
-      camera.target = vec2(0)  # just to be sure
+      cameraShake.offset = vec2(0)  # just to be sure

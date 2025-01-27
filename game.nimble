@@ -8,6 +8,8 @@ binDir        = "desktop"
 namedBin      = {"main": "game"}.toTable
 
 # Dependencies
-requires "naylib"
-requires "vmath"
+requires "nim >= 2.3.1"
 requires "fusion"
+requires "naylib >= 24.49.0"
+requires "vmath"
+requires "https://github.com/choltreppe/shady 0.1.3"

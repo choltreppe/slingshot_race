@@ -8,14 +8,14 @@ type Queue*[T] = object
 func newQueue*[T](cap: int): Queue[T] =
   result.data.setLen(cap)
 
-func last*[T](queue: Queue[T]): T =
+func last*[T](queue: Queue[T]): lent T =
   queue.data[queue.tail]
 
-func first*[T](queue: Queue[T]): Option[T] =
-  if queue.len > 0:
-    return some(queue.data[(queue.tail + queue.len - 1) mod queue.data.len])
+func first*[T](queue: Queue[T]): lent T =
+  assert queue.len > 0
+  queue.data[(queue.tail + queue.len - 1) mod queue.data.len]
 
-func add*[T](queue: var Queue[T], v: T) =
+func add*[T](queue: var Queue[T], v: sink T) =
   if queue.tail == 0:
     queue.tail = high(queue.data)
   else:
@@ -31,7 +31,7 @@ func pop*[T](queue: var Queue[T]): T =
 func deleteHead*[T](queue: var Queue[T]) =
   dec queue.len
 
-iterator items*[T](queue: Queue[T]): T =
+iterator items*[T](queue: Queue[T]): lent T =
   var i = queue.tail
   for _ in 0 ..< queue.len:
     yield queue.data[i]
