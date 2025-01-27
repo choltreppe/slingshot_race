@@ -1,7 +1,5 @@
-import std/[options, random, math]
-import fusion/matching
+import std/[random, math]
 import ./prelude, ./queue
-import ./shader
 
 
 const
@@ -33,7 +31,6 @@ type
     case kind: SpaceObjectKind
     of planet:
       radius: float32
-      texture: Texture2D
     of refuel:
       discard
 
@@ -45,8 +42,6 @@ var
   shipMinY: float32
 
   shipTexture: Texture2D
-  planetShader: Shader
-  planetNoiseOffsetLoc: ShaderLocation
 
   ship: Ship
   spaceObjects = newQueue[SpaceObject](12)
@@ -67,29 +62,13 @@ proc initGame* =
   shipMinY = viewHeight * 0.66
 
   shipTexture = loadTextureSvg("resources/ufo.svg", int32(shipRadius*2*worldScale), 0)
-  planetShader = loadShaderFromMemory(vertShader, planetFragShader)
-  planetNoiseOffsetLoc = planetShader.getShaderLocation("noiseOffset")
 
   restartGame()
 
-proc newPlanet*(position: Vec2, radius: float32): SpaceObject =
-  result = SpaceObject(kind: planet, position: position, radius: radius)
-  let size = int32(radius*2*worldScale)
-  debugEcho size
-  let camera = Camera2D(zoom: float32(size))
-  var renderTexture = loadRenderTexture(size, size)
-  planetShader.setShaderValue(
-    planetNoiseOffsetLoc,
-    vec3(rand(-420f32 .. 420f32), rand(-420f32 .. 420f32), rand(-420f32 .. 420f32))
-  )
-  textureMode(renderTexture):
-    clearBackground(Color())
-    mode2D(camera):
-      shaderMode(planetShader):
-        drawRectangle(0, 0, 1, 1, White)
-  result.texture = renderTexture.texture
+proc newPlanet(position: Vec2, radius: float32): SpaceObject =
+  SpaceObject(kind: planet, position: position, radius: radius)
 
-func boundingRadius*(obj: SpaceObject): float32 =
+func boundingRadius(obj: SpaceObject): float32 =
   case obj.kind
   of planet: obj.radius
   of refuel: refuelOrbRadius
