@@ -3,21 +3,21 @@ import ./prelude, ./queue
 
 
 const
-  shipRadius = 0.04
+  shipRadius = 0.036
   shipAccel = 0.28
   shipFuelUse = 0.14
   
   planetRadiusRange = 0.06 .. 0.14
-  planetsMinMargin = 0.16
+  planetsMinMargin = 0.22
   planetMaxDistance = 0.5
   planetDistanceRange = planetRadiusRange.a+planetsMinMargin*1.1 .. planetMaxDistance+planetsMinMargin
 
-  refuelOrbRadius = 0.02f32
+  refuelOrbRadius = 0.02'f32
 
-  gravityStrength = 4
+  gravityStrength = 5
 
-  cameraShakeDistance = 0.1
-  cameraShakeStrength = 0.01
+  cameraShakeDistance = 0.15
+  cameraShakeStrength = 0.012
 
 
 type
@@ -32,7 +32,7 @@ type
     of planet:
       radius: float32
     of refuel:
-      discard
+      active: bool
 
 randomize()
 
@@ -41,6 +41,7 @@ var
   viewHeight: float32
   shipMinY: float32
 
+  font: Font
   shipTexture: Texture2D
 
   ship: Ship
@@ -53,14 +54,16 @@ var
     radius: float32,
     direction: Vec2
   ]
+  refuelAnimTrans = 1'f32
 
-proc restartGame
+proc restartGame*
 proc initGame* =
   let screenSize = vec2(float32 getScreenWidth(), float32 getScreenHeight())
   worldScale = screenSize.x
   viewHeight = screenSize.y / screenSize.x
   shipMinY = viewHeight * 0.66
 
+  font = loadFont("resources/font.ttf", int32(0.08*worldScale), [])
   shipTexture = loadTextureSvg("resources/ufo.svg", int32(shipRadius*2*worldScale), 0)
 
   restartGame()
@@ -73,7 +76,7 @@ func boundingRadius(obj: SpaceObject): float32 =
   of planet: obj.radius
   of refuel: refuelOrbRadius
 
-proc restartGame =
+proc restartGame* =
   ship = Ship(position: vec2(0.5, shipMinY))
   clear spaceObjects
   spaceObjects &= newPlanet(
@@ -98,23 +101,35 @@ proc drawGame* =
   drawing:
     clearBackground(Black)
     for obj in spaceObjects:
-      drawCircleLines(screenSpace(obj.position), obj.boundingRadius*worldScale):
-        case obj.kind
-        of refuel: Blue
-        of planet: White
-    drawTexture(shipTexture, screenSpace(ship.position-vec2(shipRadius)), White)
+      case obj.kind
+      of planet:
+        drawCircleLines(screenSpace(obj.position), obj.boundingRadius*worldScale, White)
+      of refuel:
+        if obj.active:
+          drawCircle(screenSpace(obj.position), obj.boundingRadius*worldScale, Blue)
 
+    block drawPlayer:
+      if refuelAnimTrans < 1:
+        let bounce = 0.04 * (0.5 - abs(refuelAnimTrans-0.5))
+        drawCircle(screenSpace(ship.position), (shipRadius+bounce)*worldScale, Blue)
+      drawTexture(shipTexture, screenSpace(ship.position-vec2(shipRadius)), White)
+
+    const uiMargin = 0.03
     block drawFuelBar:
+      const width = 0.4
       var rect = screenSpace(newRect(
-        x = 0.03, y = 0.03,
-        w = 0.4, h = 0.05
+        x = 1.0 - width - uiMargin,
+        y = uiMargin,
+        w = width,
+        h = 0.05,
       ))
-      drawRectangleLines(rect, 2, White)
+      drawRectangle(rect, Black)
+      drawRectangleLines(rect, 2, Blue)
       rect.size.x *= ship.fuel
-      drawRectangle(rect, White)
+      drawRectangle(rect, Blue)
     block:
-      let p = ivec2(screenSpace(vec2(0.8, 0.02)))
-      drawText($score, p.x, p.y, int32(0.08*worldScale), White)
+      let p = ivec2()
+      drawText(font, $score, screenSpace(vec2(uiMargin)), float32(font.baseSize), 0, White)
 
 iterator planets: lent SpaceObject =
   for obj in spaceObjects:
@@ -122,6 +137,7 @@ iterator planets: lent SpaceObject =
       yield obj
 
 proc gravityAt(position: Vec2): Vec2 =
+  result = vec2(0)
   for planet in planets():
     let v = planet.position - position
     let distance = length(v)
@@ -175,7 +191,7 @@ proc addPlanet =
       spaceObjects.add:
         if lastRefuelOrbDistance > 3 and rand(6 - lastRefuelOrbDistance) == 0:
           lastRefuelOrbDistance = 0
-          SpaceObject(kind: refuel, position: position)
+          SpaceObject(kind: refuel, position: position, active: true)
         else:
           inc lastRefuelOrbDistance
           newPlanet(
@@ -184,21 +200,28 @@ proc addPlanet =
           )
       break
 
-proc updateGame*(dt: float32) =
+proc updateGame*(dt: float32, gameIsOver: var bool) =
   updateShip(dt)
   if (let d = shipMinY - ship.position.y; d > 0):
     ship.position.y = shipMinY
     for obj in spaceObjects.mitems:
       obj.position.y += d
 
-    scoreStep += d
+    scoreStep += d * 10
     if scoreStep > 1:
       inc score
       scoreStep -= 1
 
-  for obj in spaceObjects:
-    if obj.kind == refuel and dist(ship.position, obj.position) < refuelOrbRadius+shipRadius:
+  refuelAnimTrans = min(1, refuelAnimTrans + dt*6)
+
+  for obj in spaceObjects.mitems:
+    if (
+      obj.kind == refuel and obj.active and
+      dist(ship.position, obj.position) < refuelOrbRadius+shipRadius
+    ):
       ship.fuel = 1
+      obj.active = false
+      refuelAnimTrans = 0
       break
   
   if spaceObjects.last.position.y > -planetRadiusRange.a:
@@ -211,7 +234,7 @@ proc updateGame*(dt: float32) =
   block:
     let distance = ship.position.distanceToPlanets
     if distance < shipRadius or ship.position.x notin -0.1..1.1 or ship.position.y > viewHeight:
-      restartGame()
+      gameIsOver = true
     elif distance < cameraShakeDistance:
       cameraShake.radius = ((cameraShakeDistance - distance) / cameraShakeDistance)^2 * cameraShakeStrength
       if length(cameraShake.offset) > cameraShake.radius:
