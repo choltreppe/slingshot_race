@@ -12,6 +12,8 @@ requires "nim >= 2.3.1"
 requires "fusion"
 requires "naylib >= 24.49.0"
 requires "vmath"
+requires "chroma"
+requires "unroll"
 
 import std/distros
 if detectOs(Windows):

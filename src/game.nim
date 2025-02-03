@@ -1,4 +1,6 @@
 import std/[random, math]
+import chroma except Color
+import unroll
 import ./prelude, ./queue
 
 
@@ -31,8 +33,15 @@ type
     case kind: SpaceObjectKind
     of planet:
       radius: float32
+      texture: Texture2D
     of refuel:
       active: bool
+
+  PlanetShader = object
+    shader: Shader
+    locs: tuple[radius, color, randSeed: ShaderLocation]
+
+  PlanetKind = enum rockplanet, moon
 
 randomize()
 
@@ -43,6 +52,7 @@ var
 
   font: Font
   shipTexture: Texture2D
+  planetShaders: array[PlanetKind, PlanetShader]
 
   ship: Ship
   spaceObjects = newQueue[SpaceObject](12)
@@ -66,10 +76,40 @@ proc initGame* =
   font = loadFont("resources/font.ttf", int32(0.08*worldScale), [])
   shipTexture = loadTextureSvg("resources/ufo.svg", int32(shipRadius*2*worldScale), 0)
 
+  for kind in unroll(PlanetKind):
+    let shader = addr planetShaders[kind]
+    shader.shader = loadShaderFromMemory(
+      static(staticRead("shader/vert.glsl")),
+      static(staticRead("shader/" & $kind & ".glsl"))
+    )
+    for name, field in shader.locs.fieldPairs:
+      field = shader.shader.getShaderLocation(name)
+
   restartGame()
 
+template `[]=`(pshader: PlanetShader, locField, val: untyped) =
+  pshader.shader.setShaderValue(pshader.locs.locField, val)
+
 proc newPlanet(position: Vec2, radius: float32): SpaceObject =
-  SpaceObject(kind: planet, position: position, radius: radius)
+  result = SpaceObject(kind: planet, position: position, radius: radius)
+  let size = int32(radius*4*worldScale)
+  let camera = Camera2D(zoom: float32(size))
+  var renderTexture = loadRenderTexture(size, size)
+  template shader: var PlanetShader =
+    planetShaders[
+      if radius < 0.1: moon
+      else: rockplanet
+    ] 
+  shader[radius] = radius
+  let hslColor = hsv(rand(0f32..360f32), rand(20f32..50f32), rand(75f32..95f32))
+  shader[color] = cast[Vec4](hslColor.asColor).rgb
+  shader[randSeed] = vec3(rand(-420f32 .. 420f32), rand(-420f32 .. 420f32), rand(-420f32 .. 420f32))
+  textureMode(renderTexture):
+    clearBackground(Color())
+    mode2D(camera):
+      shaderMode(shader.shader):
+        drawRectangle(0, 0, 1, 1, White)
+  result.texture = renderTexture.texture
 
 func boundingRadius(obj: SpaceObject): float32 =
   case obj.kind
@@ -103,7 +143,7 @@ proc drawGame* =
     for obj in spaceObjects:
       case obj.kind
       of planet:
-        drawCircleLines(screenSpace(obj.position), obj.boundingRadius*worldScale, White)
+        drawTexture(obj.texture, screenSpace(obj.position-vec2(obj.radius)), 0, 0.5, White)
       of refuel:
         if obj.active:
           drawCircle(screenSpace(obj.position), obj.boundingRadius*worldScale, Blue)
