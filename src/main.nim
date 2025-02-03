@@ -35,7 +35,12 @@ proc main =
     while not windowShouldClose():
       if gameIsOver:
         drawGameOver()
-        if isGestureDetected(Tap):
+        if (
+          isGestureDetected(Tap) or (
+            when not defined(android): isKeyDown(Enter)
+            else: false
+          )
+        ):
           gameIsOver = false
           restartGame()
       else:

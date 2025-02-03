@@ -1,2 +1,6 @@
 desktop/game
+android*
+*.zip
+icon/*
+*.apk*
 .vscode

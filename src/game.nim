@@ -158,13 +158,23 @@ proc updateShip(dt: float32) =
   ship.velocity += gravityAt(ship.position) * dt
   
   if ship.fuel > 0:
-    for (key, vec) in {
-      Up: vec2(0, -1), Down: vec2(0, 1),
-      Left: vec2(-1, 0), Right: vec2(1, 0),
-    }:
-      if isKeyDown(key):
-        ship.velocity += vec * (shipAccel * dt)
-        ship.fuel = max(0, ship.fuel - shipFuelUse*dt)
+    if isGestureDetected(Hold):
+      var vec = (getMousePosition()/worldScale - ship.position) * 3.6
+      var strength = length(vec)
+      if strength > 1:
+        strength = 1
+        vec /= strength
+      ship.velocity += vec * (shipAccel * dt)
+      ship.fuel = max(0, ship.fuel - shipFuelUse*strength*dt)
+
+    when not defined(android):
+      for (key, vec) in {
+        Up: vec2(0, -1), Down: vec2(0, 1),
+        Left: vec2(-1, 0), Right: vec2(1, 0),
+      }:
+        if isKeyDown(key):
+          ship.velocity += vec * (shipAccel * dt)
+          ship.fuel = max(0, ship.fuel - shipFuelUse*dt)
 
 proc addPlanet =
   let prevObj = addr spaceObjects.last
