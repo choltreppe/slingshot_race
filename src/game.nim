@@ -5,21 +5,23 @@ import ./prelude, ./queue
 
 
 const
-  shipRadius = 0.036
+  shipRadius = 0.032
   shipAccel = 0.28
-  shipFuelUse = 0.14
+  shipFuelUse = 0.16
   
-  planetRadiusRange = 0.06 .. 0.14
-  planetsMinMargin = 0.22
+  planetRadii = 0.06 .. 0.14
+  planetsMinMargin = 0.3
   planetMaxDistance = 0.5
-  planetDistanceRange = planetRadiusRange.a+planetsMinMargin*1.1 .. planetMaxDistance+planetsMinMargin
+  planetDistanceRange = planetRadii.a+planetsMinMargin*1.1 .. planetMaxDistance+planetsMinMargin
 
   refuelOrbRadius = 0.02'f32
 
-  gravityStrength = 5
+  gravityStrength = 6.4
 
   cameraShakeDistance = 0.15
   cameraShakeStrength = 0.012
+
+  sunDirection = normalize(vec3(0.3, 0.5, 0.3))
 
 
 type
@@ -41,7 +43,7 @@ type
     shader: Shader
     locs: tuple[radius, color, randSeed: ShaderLocation]
 
-  PlanetKind = enum rockplanet, moon
+  PlanetKind = enum moon, rockplanet, gasplanet
 
 randomize()
 
@@ -53,6 +55,7 @@ var
   font: Font
   shipTexture: Texture2D
   planetShaders: array[PlanetKind, PlanetShader]
+  fuelMaskTexture: Texture2D
 
   ship: Ship
   spaceObjects = newQueue[SpaceObject](12)
@@ -71,10 +74,11 @@ proc initGame* =
   let screenSize = vec2(float32 getScreenWidth(), float32 getScreenHeight())
   worldScale = screenSize.x
   viewHeight = screenSize.y / screenSize.x
-  shipMinY = viewHeight * 0.66
+  shipMinY = viewHeight * 0.75
 
   font = loadFont("resources/font.ttf", int32(0.08*worldScale), [])
   shipTexture = loadTextureSvg("resources/ufo.svg", int32(shipRadius*2*worldScale), 0)
+  fuelMaskTexture = loadTextureSvg("resources/fuel_mask.svg", int32(worldScale*0.3), 0)
 
   for kind in unroll(PlanetKind):
     let shader = addr planetShaders[kind]
@@ -82,6 +86,7 @@ proc initGame* =
       static(staticRead("shader/vert.glsl")),
       static(staticRead("shader/" & $kind & ".glsl"))
     )
+    shader.shader.setShaderValue(shader.shader.getShaderLocation("sun"), sunDirection)
     for name, field in shader.locs.fieldPairs:
       field = shader.shader.getShaderLocation(name)
 
@@ -92,14 +97,15 @@ template `[]=`(pshader: PlanetShader, locField, val: untyped) =
 
 proc newPlanet(position: Vec2, radius: float32): SpaceObject =
   result = SpaceObject(kind: planet, position: position, radius: radius)
-  let size = int32(radius*4*worldScale)
+  let kind = PlanetKind(int32(
+    (radius - planetRadii.a) /
+    (planetRadii.b - planetRadii.a) *
+    (high(PlanetKind).float32 + 1.0)
+  ))
+  template shader: var PlanetShader = planetShaders[kind] 
+  var size = int32(radius*4*worldScale * (if kind == rockplanet: 1.2 else: 1))
   let camera = Camera2D(zoom: float32(size))
   var renderTexture = loadRenderTexture(size, size)
-  template shader: var PlanetShader =
-    planetShaders[
-      if radius < 0.1: moon
-      else: rockplanet
-    ] 
   shader[radius] = radius
   let hslColor = hsv(rand(0f32..360f32), rand(20f32..50f32), rand(75f32..95f32))
   shader[color] = cast[Vec4](hslColor.asColor).rgb
@@ -121,7 +127,7 @@ proc restartGame* =
   clear spaceObjects
   spaceObjects &= newPlanet(
     vec2(rand(1f32), 0),
-    rand(planetRadiusRange)
+    rand(planetRadii)
   )
   lastRefuelOrbDistance = 0
   score = 0
@@ -143,30 +149,32 @@ proc drawGame* =
     for obj in spaceObjects:
       case obj.kind
       of planet:
-        drawTexture(obj.texture, screenSpace(obj.position-vec2(obj.radius)), 0, 0.5, White)
+        drawTexture(
+          obj.texture,
+          floor(screenSpace(obj.position) - vec2(obj.texture.width.float32 / 4)),
+          0, 0.5, White)
       of refuel:
         if obj.active:
-          drawCircle(screenSpace(obj.position), obj.boundingRadius*worldScale, Blue)
+          drawCircle(screenSpace(obj.position), refuelOrbRadius*worldScale, White)
 
     block drawPlayer:
       if refuelAnimTrans < 1:
         let bounce = 0.04 * (0.5 - abs(refuelAnimTrans-0.5))
-        drawCircle(screenSpace(ship.position), (shipRadius+bounce)*worldScale, Blue)
+        drawCircle(screenSpace(ship.position), (shipRadius+bounce)*worldScale, White)
       drawTexture(shipTexture, screenSpace(ship.position-vec2(shipRadius)), White)
 
     const uiMargin = 0.03
     block drawFuelBar:
-      const width = 0.4
-      var rect = screenSpace(newRect(
-        x = 1.0 - width - uiMargin,
-        y = uiMargin,
-        w = width,
-        h = 0.05,
-      ))
+      var pos = screenSpace(vec2(1-uiMargin, uiMargin)).floor
+      pos.x -= fuelMaskTexture.width.float32
+      let size = vec2(fuelMaskTexture.size)
+      var rect = newRect(pos + size*vec2(0.0466, 0.2192), size*vec2(0.7777, 0.3602))
       drawRectangle(rect, Black)
-      drawRectangleLines(rect, 2, Blue)
+      let prevWidth = rect.size.x
       rect.size.x *= ship.fuel
-      drawRectangle(rect, Blue)
+      rect.position.x += prevWidth - rect.size.x
+      drawRectangle(rect, White)
+      drawTexture(fuelMaskTexture, pos, White)
     block:
       let p = ivec2()
       drawText(font, $score, screenSpace(vec2(uiMargin)), float32(font.baseSize), 0, White)
@@ -198,7 +206,7 @@ proc updateShip(dt: float32) =
   ship.velocity += gravityAt(ship.position) * dt
   
   if ship.fuel > 0:
-    if isGestureDetected(Hold):
+    if isMouseButtonDown(Left):
       var vec = (getMousePosition()/worldScale - ship.position) * 3.6
       var strength = length(vec)
       if strength > 1:
@@ -236,8 +244,8 @@ proc addPlanet =
 
   while true:
     let position = prevObj.position + rotate(rand(angleRange)) * vec2(0, -distance)
-    let maxRadius = min(position.distanceToPlanets - planetsMinMargin, -(position.y + planetRadiusRange.a))
-    if maxRadius > planetRadiusRange.a:
+    let maxRadius = min(position.distanceToPlanets - planetsMinMargin, -(position.y + planetRadii.a))
+    if maxRadius > planetRadii.a:
       spaceObjects.add:
         if lastRefuelOrbDistance > 3 and rand(6 - lastRefuelOrbDistance) == 0:
           lastRefuelOrbDistance = 0
@@ -246,7 +254,7 @@ proc addPlanet =
           inc lastRefuelOrbDistance
           newPlanet(
             position,
-            rand(planetRadiusRange.a .. min(planetRadiusRange.b, maxRadius))
+            rand(planetRadii.a .. min(planetRadii.b, maxRadius))
           )
       break
 
@@ -274,7 +282,7 @@ proc updateGame*(dt: float32, gameIsOver: var bool) =
       refuelAnimTrans = 0
       break
   
-  if spaceObjects.last.position.y > -planetRadiusRange.a:
+  if spaceObjects.last.position.y > -planetRadii.a:
     addPlanet()
   block:
     let first = addr spaceObjects.first

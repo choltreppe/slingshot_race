@@ -1,6 +1,8 @@
-desktop/game
-android*
+desktop
+!desktop/resources
+src/admobglue.c
 *.zip
-icon/*
 *.apk*
+*.aab*
+*.blend*
 .vscode

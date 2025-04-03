@@ -40,32 +40,6 @@ when defined(android):
   switch("clang.options.linker", "--target=" & AndroidTarget & " -shared " & AndroidAbiFlags)
 
   --define:androidNDK
-  # --mm:orc
+  --mm:orc
   --panics:on # not strictly needed but good to have
   --define:noSignalHandler
-
-elif defined(emscripten):
-  --define:GraphicsApiOpenGlEs2
-  --define:NaylibWebResources
-  switch("define", "NaylibWebResourcesPath=src/resources")
-  --os:linux
-  --cpu:wasm32
-  --cc:clang
-  when buildOS == "windows":
-    --clang.exe:emcc.bat
-    --clang.linkerexe:emcc.bat
-    --clang.cpp.exe:emcc.bat
-    --clang.cpp.linkerexe:emcc.bat
-  else:
-    --clang.exe:emcc
-    --clang.linkerexe:emcc
-    --clang.cpp.exe:emcc
-    --clang.cpp.linkerexe:emcc
-
-  # --mm:orc
-  --threads:on
-  --panics:on
-  --define:noSignalHandler
-  --passL:"-o public/raylib_game.html"
-  # Use raylib/src/shell.html or raylib/src/minshell.html
-  --passL:"--shell-file src/minshell.html"

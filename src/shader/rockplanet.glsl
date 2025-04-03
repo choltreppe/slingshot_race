@@ -4,11 +4,12 @@ precision highp float;
 uniform vec3 randSeed;
 uniform float radius;
 uniform vec3 color;
-
-const vec3 sun = normalize(vec3(0.3, 0.5, 0.3));
+uniform vec3 sun;
 
 in vec3 fragPosition;
 out vec4 finalColor;
+
+const float mountainHeight = 0.2;
 
 float hash(float n){
     return fract( n*17.0*fract( n*0.3183099 ) );
@@ -40,29 +41,42 @@ float noise(vec3 x){
     float k6 =   a - b - e + f;
     float k7 = - a + b + c - d + e - f - g + h;
 
-    return k0 + k1*u.x + k2*u.y + k3*u.z + k4*u.x*u.y + k5*u.y*u.z + k6*u.z*u.x + k7*u.x*u.y*u.z;
+    return (k0 + k1*u.x + k2*u.y + k3*u.z + k4*u.x*u.y + k5*u.y*u.z + k6*u.z*u.x + k7*u.x*u.y*u.z) * 2.0 - 1.0;
 }
 
 float fractalNoise(vec3 p) {
     float result = 0.0;
-    for (float i = 2.0; i < 50.0; i *= 2.0)
+    for (float i = 2.0; i < 20.0; i *= 2.0)
         result += noise(p*i + fract(randSeed*i)) / i;
     return result;
 }
 
+float sdf(vec3 p) {
+    return length(p) - 1 - max(0, fractalNoise(p*6.4*radius)*mountainHeight) + mountainHeight;
+}
+
 void main() {
     vec2 uv = fragPosition.xy*2.0 - vec2(1.0);
-    float zs = 1.0 - uv.x*uv.x - uv.y*uv.y;
-    if (zs < 0.0)
-        finalColor = vec4(0.0);
-    else {
-        finalColor = vec4(color, 1.0);
-        vec3 p = vec3(uv, sqrt(zs));
-        if (fractalNoise(p*6.4*radius) > 0.5)
-            finalColor.rgb = finalColor.gbr*0.7;
-        if (dot(normalize(p), sun) < 0.0)
-            finalColor.rgb = mix(finalColor.rgb, vec3(0.0, 0.0, 0.2), 0.4);
-        else
-            finalColor.rgb += vec3(0.2, 0.2, 0.1);
+    finalColor = vec4(0.0);
+    vec3 p = vec3(uv, 1.0);
+    for (int i = 0; i < 200; i++) {
+        float d = sdf(p);
+        if (d < 0.002) {
+            finalColor = vec4(color, 1.0);
+            if (length(p) < 1.01-mountainHeight)
+                finalColor.rgb = mix(finalColor.gbr, finalColor.brg, 0.5) * 0.7;
+            vec2 o = vec2(0.0, 0.01);
+            vec3 n = normalize(vec3(
+                sdf(p + o.yxx) - sdf(p - o.yxx),
+                sdf(p + o.xyx) - sdf(p - o.xyx),
+                sdf(p + o.xxy) - sdf(p - o.xxy)
+            ));
+            if (dot(n, sun) < 0.0)
+                finalColor.rgb = mix(finalColor.rgb, vec3(0.0, 0.0, 0.2), 0.4);
+            else
+                finalColor.rgb += vec3(0.2, 0.2, 0.1);
+            break;
+        }
+        p.z -= d;
     }
 }

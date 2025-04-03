@@ -4,10 +4,10 @@ precision highp float;
 uniform vec3 randSeed;
 uniform float radius;
 uniform vec3 color;
+uniform vec3 sun;
 
-const float craterScale = 10.0;
-const float inset = 0.16;
-const vec3 sun = normalize(vec3(0.3, 0.5, 0.3));
+const float craterScale = 14.0;
+const float inset = 0.1;
 
 in vec3 fragPosition;
 out vec4 finalColor;
@@ -32,7 +32,11 @@ int surfaceTypeV1(vec2 uv, out bool inShadow) {
     else {
         vec3 p = vec3(uv, sqrt(zs));
         inShadow = dot(normalize(p), sun) < 0.0;
-        if (randomSpheres(p*craterScale*radius + fract(randSeed))) return 1;
+        vec3 x = p*craterScale*radius + fract(randSeed);
+        if (
+            randomSpheres(x) ||
+            randomSpheres(x + floor(randSeed) + vec3(0.5))
+        ) return 1;
         else return 0;
     }
 }
@@ -46,7 +50,7 @@ int surfaceType(vec2 uv, out bool inShadow) {
 
 void main() {
     vec2 uv = fragPosition.xy*2.0 - vec2(1.0);
-    
+
     vec3 colorLight = color + vec3(0.2, 0.2, 0.1);
     vec3 colorShadow = mix(color, vec3(0.0, 0.0, 0.2), 0.4);
     vec3 colorDarkest = mix(color, vec3(0.0, 0.0, 0.24), 0.6);

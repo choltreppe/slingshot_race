@@ -10,6 +10,7 @@ namedBin      = {"main": "game"}.toTable
 # Dependencies
 requires "nim >= 2.3.1"
 requires "fusion"
+requires "nimja"
 requires "naylib >= 24.49.0"
 requires "vmath"
 requires "chroma"
@@ -24,5 +25,4 @@ elif detectOs(Ubuntu):
 
 # Tasks
 include "build_android.nims"
-include "setup_build_env.nims"
 include "export_icon.nims"
