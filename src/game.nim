@@ -14,7 +14,7 @@ const
   planetMaxDistance = 0.5
   planetDistanceRange = planetRadii.a+planetsMinMargin*1.1 .. planetMaxDistance+planetsMinMargin
 
-  refuelOrbRadius = 0.02'f32
+  refuelOrbRadius = 0.036'f32
 
   gravityStrength = 6.4
 
@@ -55,6 +55,7 @@ var
   font: Font
   shipTexture: Texture2D
   planetShaders: array[PlanetKind, PlanetShader]
+  refuelOrbTexture: Texture2D
   fuelMaskTexture: Texture2D
 
   ship: Ship
@@ -78,6 +79,7 @@ proc initGame* =
 
   font = loadFont("resources/font.ttf", int32(0.08*worldScale), [])
   shipTexture = loadTextureSvg("resources/ufo.svg", int32(shipRadius*2*worldScale), 0)
+  refuelOrbTexture = loadTextureSvg("resources/refuel.svg", 0, int32(refuelOrbRadius*2*worldScale))
   fuelMaskTexture = loadTextureSvg("resources/fuel_mask.svg", int32(worldScale*0.3), 0)
 
   for kind in unroll(PlanetKind):
@@ -155,7 +157,7 @@ proc drawGame* =
           0, 0.5, White)
       of refuel:
         if obj.active:
-          drawCircle(screenSpace(obj.position), refuelOrbRadius*worldScale, White)
+          drawTexture(refuelOrbTexture, screenSpace(obj.position) - vec2(refuelOrbTexture.size)/2, White)
 
     block drawPlayer:
       if refuelAnimTrans < 1:
@@ -275,7 +277,7 @@ proc updateGame*(dt: float32, gameIsOver: var bool) =
   for obj in spaceObjects.mitems:
     if (
       obj.kind == refuel and obj.active and
-      dist(ship.position, obj.position) < refuelOrbRadius+shipRadius
+      dist(ship.position, obj.position) < refuelOrbRadius*1.6 + shipRadius
     ):
       ship.fuel = 1
       obj.active = false
