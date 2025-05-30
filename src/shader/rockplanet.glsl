@@ -1,4 +1,4 @@
-#version 410
+#version 320 es
 precision highp float;
 
 uniform vec3 randSeed;
@@ -52,7 +52,7 @@ float fractalNoise(vec3 p) {
 }
 
 float sdf(vec3 p) {
-    return length(p) - 1 - max(0, fractalNoise(p*6.4*radius)*mountainHeight) + mountainHeight;
+    return length(p) - 1.0 - max(0.0, fractalNoise(p*6.4*radius)*mountainHeight) + mountainHeight;
 }
 
 void main() {

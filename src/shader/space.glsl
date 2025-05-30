@@ -1,4 +1,4 @@
-#version 410
+#version 320 es
 precision highp float;
 
 const vec3 randSeed = vec3(2783.44, 893.2317, 4.9341);

@@ -1,4 +1,4 @@
-#version 410
+#version 320 es
 precision highp float;
 
 uniform vec3 randSeed;
@@ -27,7 +27,7 @@ bool randomSpheres(vec3 p) {
 
 // -1 = space; 0 = surface; 1 = crater; 2 = crater-rim
 int surfaceTypeV1(vec2 uv, out bool inShadow) {
-    float zs = 1 - uv.x*uv.x - uv.y*uv.y;
+    float zs = 1.0 - uv.x*uv.x - uv.y*uv.y;
     if (zs < 0.0) return -1;
     else {
         vec3 p = vec3(uv, sqrt(zs));

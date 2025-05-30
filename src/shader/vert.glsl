@@ -1,4 +1,4 @@
-#version 410
+#version 320 es
 precision highp float;
 
 uniform mat4 mvp;
