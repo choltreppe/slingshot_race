@@ -60,7 +60,7 @@ var
   ship: Ship
   spaceObjects = newQueue[SpaceObject](12)
   lastRefuelOrbDistance: int32
-  score: uint64
+  score*: uint64
   scoreStep: float32
   cameraShake: tuple[
     offset: Vec2,

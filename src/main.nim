@@ -34,7 +34,7 @@ proc main =
     var gameIsOver = false
     while not windowShouldClose():
       if gameIsOver:
-        drawGameOver()
+        drawGameOver(score)
         if (
           isGestureDetected(Tap) or (
             when not defined(android): isKeyDown(Enter)

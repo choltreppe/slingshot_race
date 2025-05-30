@@ -38,3 +38,35 @@ proc loadImageSvg*(fileName: string, width, height: int32): Image =
 
 proc loadTextureSvg*(fileName: string, width, height: int32): Texture =
   loadTextureFromImage(loadImageSvg(fileName, width, height))
+
+
+proc saveFileDataImpl(filename: cstring, data: pointer, size: cint)
+  {.cdecl, importc: "SaveFileData", header: "raylib.h".}
+proc saveFileData*(filename: string, data: auto) =
+  saveFileDataImpl(filename.cstring, addr data, cint sizeof(data))
+
+proc loadFileDataImpl(filename: cstring, size: ptr cint): pointer
+  {.cdecl, importc: "LoadFileData", header: "raylib.h".}
+proc loadFileData*[T](filename: string): T =
+  let size = cint sizeof(T)
+  cast[ptr T](loadFileDataImpl(filename.cstring, addr size))[]
+
+proc raylibFileExists*(filename: string): bool =
+  let size = cint 1
+  loadFileDataImpl(filename, addr size) != nil
+
+
+type PermaVar*[filename: static string, T] = object
+  val: T
+
+proc load*[filename, T](v: var PermaVar[filename, T]): bool =
+  if raylibFileExists(filename):
+    v.val = loadFileData[T](filename)
+    true
+  else: false
+
+proc `<-`*[filename, T](v: var PermaVar[filename, T], val: T) =
+  v.val = val
+  saveFileData(filename, val)
+
+converter val*[filename, T](v: PermaVar[filename, T]): T = v.val
