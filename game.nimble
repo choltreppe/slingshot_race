@@ -25,4 +25,3 @@ elif detectOs(Ubuntu):
 
 # Tasks
 include "build_android.nims"
-include "export_icon.nims"

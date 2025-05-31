@@ -56,8 +56,8 @@ const
 
 
 # Android app configuration variables
-type IconSize = enum ldpi, mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi
-const iconDpi = [ldpi:36, mdpi:48, hdpi:72, xhdpi:96, xxhdpi:144, xxxhdpi:192]
+type MipmapDpi = enum mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi
+const iconSize = [mdpi: (48, 108), hdpi: (72, 162), xhdpi: (96, 216), xxhdpi: (144, 324), xxxhdpi: (192, 432)]
 const AppLabelName = "Slingshot Racer"
 
 
@@ -68,20 +68,25 @@ task setupAndroid, "Prepare raylib project for Android development":
 
   # Create required temp directories for APK building
   for cpu in AndroidCPUs: mkDir(ProjectBuildPath / "jniLibs" / cpu.toArchName)
-  for size in IconSize:
-    mkDir(ProjectBuildPath / &"res/mipmap-{size}")
   mkDir(ProjectBuildPath / "res/values")
   mkDir(ProjectBuildPath / "assets/resources")
   mkDir(ProjectBuildPath / "obj/screens")
   # Copy project required resources: strings.xml, icon.png, assets
   writeFile(ProjectBuildPath / "res/values/strings.xml",
       &"<?xml version='1.0' encoding='utf-8'?>\n<resources><string name='app_name'>{AppLabelName}</string></resources>\n")
-  for size in IconSize:
-    cpFile(&"icon/{iconDpi[size]}x{iconDpi[size]}.png", ProjectBuildPath / &"res/mipmap-{size}/icon.png")
   cpDir(ProjectResourcesPath, ProjectBuildPath / "assets/resources")
 
   template fillTemplate(templ, outPath: static string) =
     writeFile(outPath, tmplf(templ, baseDir = getScriptDir()/"android_templates"))
+
+  # launcher icon
+  for size in MipmapDpi:
+    let outDir = ProjectBuildPath / &"res/mipmap-{size}"
+    mkDir(outDir)
+    let pixels = iconSize[size]
+    exec &"""inkscape --export-type="png" --export-filename="{outDir}/icon.png" --export-width={pixels[0]} icon.svg"""
+    cpFile(outDir/"icon.png", outDir/"icon_round.png")
+    exec &"""inkscape --export-type="png" --export-filename="{outDir}/icon_foreground.png" --export-width={pixels[1]} icon.svg"""
 
   # Create android/gradle project files
   fillTemplate("AndroidManifest.xml", ProjectBuildPath / "AndroidManifest.xml")
