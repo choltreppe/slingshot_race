@@ -1,5 +1,6 @@
 assets
-res
+res/*
+!res/mipmap-anydpi-v26
 jniLibs
 java
 AndroidManifest.xml
