@@ -2,7 +2,7 @@
 
 a little space racing game, where you play a ufo and have to dodge planets and use their gravity.
 
-![Screenshot](https://raw.githubusercontent.com/choltreppe/slingshot_race/master/screenshot.png)
+![Screenshot](https://raw.githubusercontent.com/choltreppe/slingshot_race/master/screenshot.jpeg)
 
 ## compile / run
 
